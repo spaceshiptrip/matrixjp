@@ -1,102 +1,94 @@
-# MatrixJP.ps1 — Japanese Matrix rain (Windows, no dependencies)
-# Run:  powershell -ExecutionPolicy Bypass -File .\matrixjp.ps1
+# MatrixJP (fast) — batches each frame into ONE console write
+# Run: powershell -ExecutionPolicy Bypass -File .\matrixjp_fast.ps1
 # Quit: Ctrl+C
 
-# Prefer UTF-8 output when possible
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
 
-# Build half-width Katakana programmatically to avoid encoding issues
-# Main half-width Katakana: U+FF71..U+FF9D, plus small kana U+FF67..U+FF6F and the long mark U+FF70
-$codepoints = @()
-$codepoints += (0xFF67..0xFF6F)  # small ｧｨｩｪｫｯｬｭｮ
-$codepoints += 0xFF70            # ｰ
-$codepoints += (0xFF71..0xFF9D)  # ｱ..ﾝ
-$Charset = -join ($codepoints | ForEach-Object { [char]$_ })
+# Build half-width Katakana (safe: no literal JP in file)
+$cp = @()
+$cp += (0xFF67..0xFF6F)  # small ｧｨｩｪｫｯｬｭｮ
+$cp += 0xFF70            # ｰ
+$cp += (0xFF71..0xFF9D)  # ｱ..ﾝ
+$CHARSET = -join ($cp | ForEach-Object { [char]$_ })
 
-# ANSI helpers
-$ESC   = [char]27
-$CSI   = "$ESC["
-$GREEN_BRIGHT = "${CSI}92m"
-$GREEN_DIM    = "${CSI}32;2m"
-$RESET        = "${CSI}0m"
-$HIDE_CURSOR  = "${CSI}?25l"
-$SHOW_CURSOR  = "${CSI}?25h"
+$ESC = [char]27; $CSI = "$ESC["
+$HIDE = "${CSI}?25l"; $SHOW = "${CSI}?25h"
+$CLR  = "${CSI}2J";   $HOME = "${CSI}H"
+$GREEN = "${CSI}32m"; $GREEN_BRIGHT = "${CSI}92m"; $DIM = "${CSI}2m"; $RST = "${CSI}0m"
 
-# Settings
-$delayMs = 30      # lower = faster
-$tailLen = 12      # trail length
+# Tunables
+$delayMs = 10          # lower = faster
+$tailLen = 8           # trail length
 
-$raw  = $Host.UI.RawUI
+$raw = $Host.UI.RawUI
 $size = $raw.WindowSize
-$width  = [Math]::Max(2, $size.Width)
-$height = [Math]::Max(2, $size.Height)
+$W = [Math]::Max(4, $size.Width)
+$H = [Math]::Max(4, $size.Height)
 
-# One drop per column
-$drops  = New-Object int[] $width
-$speeds = New-Object int[] $width
-$rnd = [Random]::new()
-
-for ($x=0; $x -lt $width; $x++) {
-  $drops[$x]  = -$rnd.Next(0, $height)         # start above screen
-  $speeds[$x] = @(1,1,1,2)[$rnd.Next(0,4)]     # mostly slow
+# One drop per column (skip col 0 to avoid left edge weirdness)
+$drops  = New-Object int[] $W
+$speeds = New-Object int[] $W
+$r = [Random]::new()
+for ($x=1; $x -lt $W; $x++) {
+  $drops[$x]  = -$r.Next(0, $H)
+  $speeds[$x] = @(1,1,1,2)[$r.Next(0,4)]
 }
 
-function GotoXY([int]$row, [int]$col) {
-  return "$CSI$($row);$($col)H"
-}
-function DrawChar([int]$row, [int]$col, [string]$ch, [string]$style) {
-  if ($row -ge 1 -and $row -le $height -and $col -ge 1 -and $col -le $width) {
-    Write-Host ("{0}{1}{2}{3}" -f (GotoXY $row $col), $style, $ch, $RESET) -NoNewline
-  }
-}
+# Pre-alloc a StringBuilder with a rough capacity to minimize reallocs
+$cap = [int]([Math]::Max(100000, $W * $H * 6))
+$sb  = [System.Text.StringBuilder]::new($cap)
 
-# Hide cursor + clear screen
-Write-Host $HIDE_CURSOR -NoNewline
-Write-Host ("{0}2J" -f $CSI) -NoNewline
+# Hide cursor + clear once
+[Console]::Write($HIDE + $CLR)
 
 try {
   while ($true) {
-    # Handle window resize
+    # Handle resize
     $size = $raw.WindowSize
-    $width  = [Math]::Max(2, $size.Width)
-    $height = [Math]::Max(2, $size.Height)
+    $W = [Math]::Max(4, $size.Width)
+    $H = [Math]::Max(4, $size.Height)
 
-    for ($x = 1; $x -lt $width; $x++) {
+    $sb.Clear() | Out-Null
+    [void]$sb.Append($HOME)  # top-left each frame
+
+    # Draw all columns into one big string
+    for ($x=1; $x -lt $W; $x++) {
       $y = $drops[$x]
 
       # Head (bright)
-      if ($y -ge 1 -and $y -le $height) {
-        $ch = $Charset[$rnd.Next(0, $Charset.Length)]
-        DrawChar $y $x $ch $GREEN_BRIGHT
+      if ($y -ge 1 -and $y -le $H) {
+        $ch = $CHARSET[$r.Next(0, $CHARSET.Length)]
+        [void]$sb.AppendFormat("{0}{1};{2}H{3}{4}{5}", $CSI, $y, $x, $GREEN_BRIGHT, $ch, $RST)
       }
 
       # Tail (dim)
       for ($i=1; $i -le $tailLen; $i++) {
         $yy = $y - $i
-        if ($yy -ge 1 -and $yy -le $height) {
-          $ch = $Charset[$rnd.Next(0, $Charset.Length)]
-          DrawChar $yy $x $ch $GREEN_DIM
-        }
+        if ($yy -lt 1 -or $yy -gt $H) { continue }
+        $ch = $CHARSET[$r.Next(0, $CHARSET.Length)]
+        # Slight fade using DIM; cheap and fast
+        [void]$sb.AppendFormat("{0}{1};{2}H{3}{4}{5}{6}", $CSI, $yy, $x, $GREEN, $DIM, $ch, $RST)
       }
 
-      # Clear behind tail
+      # Clear behind tail (write a space)
       $clearY = $y - $tailLen
-      if ($clearY -ge 1 -and $clearY -le $height) {
-        Write-Host ("{0} " -f (GotoXY $clearY $x)) -NoNewline
+      if ($clearY -ge 1 -and $clearY -le $H) {
+        [void]$sb.AppendFormat("{0}{1};{2}H ", $CSI, $clearY, $x)
       }
 
-      # Advance + recycle
+      # Advance
       $drops[$x] += $speeds[$x]
-      if ($drops[$x] - $tailLen -gt $height) {
-        $drops[$x]  = -$rnd.Next(0, [Math]::Max(2, [int]($height/2)))
-        $speeds[$x] = @(1,1,2)[$rnd.Next(0,3)]
+      if ($drops[$x] - $tailLen -gt $H) {
+        $drops[$x]  = -$r.Next(0, [Math]::Max(2, [int]($H/2)))
+        $speeds[$x] = @(1,1,2)[$r.Next(0,3)]
       }
     }
 
+    # Write the whole frame at once
+    [Console]::Write($sb.ToString())
     Start-Sleep -Milliseconds $delayMs
   }
 }
 finally {
-  Write-Host $SHOW_CURSOR -NoNewline
-  Write-Host $RESET
+  [Console]::Write($SHOW + $RST)
 }
