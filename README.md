@@ -54,7 +54,44 @@ powershell -ExecutionPolicy Bypass -File .\matrixjp.ps1
 
 Quit at any time with **Ctrl+C**.
 
-> ⚡ Note: Works best in **Windows Terminal** with UTF-8 output enabled.
+### 🔧 Options
+
+The PowerShell script supports runtime parameters for optimization:
+
+* `-DelayMs <int>` → frame delay in milliseconds (lower = faster).
+* `-TailLen <int>` → trail length (higher = longer streaks).
+* `-ClearEveryN <int>` → how often to clear the screen buffer:
+
+  * `1` → clear every frame (**no artifacts**, cleanest).
+  * `5` → clear every 5th frame (less flicker, minor trails).
+  * `0` → never clear (fastest, may leave artifacts).
+* `-ColStep <int>` → draw every Nth column (e.g. `2` = skip every other column for speed).
+
+### ⚡ Examples
+
+Run at high speed, clear every frame (recommended clean look):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\matrixjp.ps1 -ClearEveryN 1 -DelayMs 5 -TailLen 6
+```
+
+Run smoother with less clearing (every 5 frames):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\matrixjp.ps1 -ClearEveryN 5 -DelayMs 8
+```
+
+Fastest mode, no clears (may leave artifacts):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\matrixjp.ps1 -ClearEveryN 0
+```
+
+Skip columns to improve performance on wide terminals:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\matrixjp.ps1 -ClearEveryN 1 -ColStep 2
+```
 
 ---
 
@@ -62,14 +99,10 @@ Quit at any time with **Ctrl+C**.
 
 * For best results, set your terminal font to a CJK-capable monospaced font, e.g. **Noto Sans Mono CJK JP**.
 * Make sure your terminal is set to **UTF-8 encoding**.
-* To adjust the effect (Python version):
+* To adjust the effect:
 
-  * Change `time.sleep(0.03)` inside the script → controls speed.
-  * Change the `tail` variable → controls trail length.
-* To adjust the effect (PowerShell version):
-
-  * Change `$delayMs = 30` → controls speed.
-  * Change `$tailLen = 12` → controls trail length.
+  * **Python version** → edit `time.sleep()` and `tail` in `matrixjp.py`.
+  * **PowerShell version** → pass `-DelayMs`, `-TailLen`, `-ClearEveryN`, or `-ColStep` at runtime.
 
 ---
 
@@ -82,4 +115,5 @@ Quit at any time with **Ctrl+C**.
 ## 📜 License
 
 MIT License — feel free to modify and share.
+
 
