@@ -54,7 +54,7 @@ Quit at any time by pressing **q** or **Esc**.
 
 ## 📸 Demo
 
-*(screenshot placeholder — insert your terminal screenshot here)*
+![MatrixJP Demo](pub/matrix-demo.png)
 
 ---
 
